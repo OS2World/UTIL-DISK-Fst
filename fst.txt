@@ -1,0 +1,1206 @@
+===============================================================================
+fst.doc      fst 0.3f                                               13-Aug-1996
+===============================================================================
+                                     Copyright (c) 1995-1996 by Eberhard Mattes
+
+License
+=======
+
+fst is free software; you can redistribute it and/or modify it under
+the terms of the GNU General Public License as published by the Free
+Software Foundation; either version 2, or (at your option) any later
+version.
+
+fst is distributed in the hope that it will be useful, but WITHOUT ANY
+WARRANTY; without even the implied warranty of MERCHANTABILITY or
+FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
+for more details.
+
+You should have received a copy of the GNU General Public License
+along with fst; see the file COPYING.  If not, write to the Free
+Software Foundation, 59 Temple Place - Suite 330, Boston, MA
+02111-1307, USA.
+
+
+What is fst?
+============
+
+fst (File System Tool) is a tool for checking filesystems, like
+CHKDSK, and for displaying information about filesystems.  Currently,
+fst supports HPFS and FAT (FAT support is quite untested).
+
+Unlike CHKDSK, fst does not fix the errors it finds.
+
+I wrote fst after a HPFS partition was corrupted by an HPFS bug three
+times in a single day.  I wanted to know exactly what's going wrong.
+
+Why another CHKDSK?  Well, CHKDSK has several problems:
+
+- CHKDSK does not show the names of all files known to be corrupt (or
+  corrupted by CHKDSK).  For instance, if n files share data sectors,
+  the names of only n-1 files are printed; CHKDSK won't tell you about
+  one file which is probably damaged out of each group of files
+  sharing sectors
+
+- CHKDSK sometimes corrupts the file system even more than it was
+  before running CHKDSK.  fst can save a snapshot of all relevant
+  sectors to a file.  After running CHKDSK, you can compare the disk
+  to the snapshot file to find out what sectors have been changed by
+  CHKDSK.  You can even restore the sectors from the snapshot file to
+  the disk to undo CHKDSK's fixes.
+
+- CHKDSK sometimes gives false alarms, complaining about errors
+  which don't exist and which it won't fix.  For instance, CHKDSK
+  apparently has problems with extended attributes of type 2 (FNODE
+  pointing to an ALSEC).
+
+- CHKDSK cannot fix certain types of HPFS corruption (for instance,
+  sectors shared by Spare DIRBLKs and extended attributes).  To be
+  able to fix the errors manually with a sector editor, one needs to
+  know exactly what's wrong.  For each defect, fst prints the relevant
+  sector numbers.
+
+
+Sector editors for OS/2
+=======================
+
+fst is not a sector editor.  There are several sector editors
+available for OS/2:
+
+- DiskEdit (part of the Graham Utilities)
+
+- SEdit (part of the GammaTech Utilities)
+
+- HPFSTool (Shareware, ftp-os2.cdrom:/pub/os2/diskutil/hpfstl17.zip)
+
+
+Installing fst
+==============
+
+After unpacking fst03f.zip, copy FST.EXE and FST.DOC to a
+write-protected floppy disk.  If you have a FAT partition on a hard
+disk, copy FST.EXE and FST.DOC to a FAT partition.  Note that HPFS
+partitions are not accessible if the system has not been shutdown
+properly; as this is exactly the situation in which you might want to
+run fst, having FST.EXE on an HPFS partition won't work.
+
+If you are installing fst on a machine which can be accessed remotely,
+make sure that fst cannot be run by remote users (telnet, BBS, etc.).
+fst's `copy' action can read any file, even files which are protected
+by access control or locked.
+
+
+Running fst
+===========
+
+fst is a command line oriented program.  The action to be performed
+and the arguments for that action are specefied in the command line of
+fst.
+
+
+Command line overview
+---------------------
+
+The command line has the following format:
+
+  fst [<fst_options>] <action> [<action_options>] <arguments>
+
+<fst_options> are optional switches which control the overall
+operation of fst.
+
+<action> is a keyword specifying the action to perform.
+
+<action_options> are optional switches which depend on <action>.
+
+<arguments> are parameters (such as filenames) for the action,
+depending on <action>.
+
+
+Getting help
+------------
+
+If you run fst without any arguments, it will display a short overview
+over the available <fst_options> and <action>s:
+
+  fst
+
+To get help on a specific action, type
+
+  fst -h <action>
+
+where <action> is the action for which you want to get help.  Example:
+
+  fst -h check
+
+This will show the available <action_options> and <arguments> for the
+`check' action.
+
+
+fst options
+-----------
+
+The following optional switches can be specified for <fst_options>:
+
+-h      Show help about <action>.
+
+-d      Use DosRead/DosWrite.  By default, fst uses logical disk track
+        I/O.  You probably never have to use the -d switch.
+
+-n      Continue if disk cannot be locked.  By default, fst aborts if
+        it cannot lock the specified disk.  If the -n option is given
+        and the disk cannot be locked, fst continues after printing a
+        warning.  As the operating system may change the disk at any
+        time unless it is locked, fst's operation on an unlocked disk
+        is very unreliable.  For instance, the `check' action may
+        indicate errors which are not present, or may miss errors
+        which are present.  Snapshot files created from an unlocked
+        disk may be inconsistent.
+
+-w      Enable writing to disk.  By default, fst opens the disk for
+        reading only.  Some actions (`write' and `restore') write to
+        the disk, therefore you have to use the -w option to enable
+        writing.  Unless the -w option is given, fst is completely
+        safe.
+
+-x      Show sector numbers in hexadecimal.  By default, sector
+        numbers are displayed in decimal.  Some sector editors use
+        hexadecimal numbers for sector numbers; you might want to use
+        the -x option if you are using such a sector editor.
+
+
+Actions
+-------
+
+Give exactly one of the following keywords for <action> on fst's
+command line:
+
+info    Show information about the file system, a sector, or a path name
+
+check   Check the file system
+
+save    Take a snapshot of the file system
+
+diff    Compare snapshot files, CRC files, and disks
+
+restore Copy sectors from snapshot file to disk
+
+dir     List a directory
+
+copy    Copy a file from the disk
+
+read    Copy a sector to a file
+
+write   Write a sector from a file to disk
+
+crc     Save CRCs for all sectors of a disk
+
+
+Arguments
+---------
+
+All commands take arguments.  At least one of these arguments (usually
+called <source> or <target>) designates a disk to which the action
+should be applied.  A disk is specified by the drive letter followed
+by a colon.  Example:
+
+  fst check c:
+
+Note that CDROM drives are not supported.  Alternatively, most actions
+support snapshot files in place of disks.  Example:
+
+  fst check c951204a.ss
+
+Snapshot files are recognized by a special signature (magic word) and
+are created with the `save' action.  A snapshot file contains all
+relevant sectors which make up the structure of the file system.  This
+includes all directories and most extended attributes.
+
+Alternatively, some actions support CRC files in place of disks.
+Example:
+
+  fst diff d951203a.crc d:
+
+CRC files are recognized by a special signature (magic word) and are
+created with the `crc' action.  A CRC file contains one CRC (a special
+variant of a checksum) for each sector of its source disk.
+
+Some actions take a sector number as argument.  Sector numbers can be
+given as decimal number (without leading 0), as hexadecimal number
+(leading 0x) or as octal number (leading 0 -- attention!).
+
+
+Output redirection
+------------------
+
+You can redirect fst's output to a file or a device or pipe the output
+into another program such as `more'.  Informational output (that is,
+output expected to be generated by a given action) is sent to standard
+output (file handle 1).  Error messages are sent to standard error
+(file handle 2).  The `check' action is an exception: Error messages
+(except for fatal error messages) are sent to standard output along
+with informational messages.  The output enabled by the -v option of
+the `check' action is sent to standard error.
+
+To redirect standard output to a file, use CMD.EXE's
+
+  >filename
+
+operator on the command line.  To redirect standard error to a file,
+use CMD.EXE's
+
+  2>filename
+
+operator.  To redirect both standard output and standard error to the
+same file, use
+
+  >filename 2>&1
+
+Example:
+
+  fst check -v c: >report
+
+Note that the file names printed due to the -v option are not
+redirected to `report'!
+
+As stopping the output with Ctrl-S does not work if you have booted
+OS/2 from diskette, it is recommended in this case to pipe the output
+through `more':
+
+  fst check c: | more
+
+(Don't forget to copy MORE.COM to the fst diskette!)  It might be
+more convenient to redirect output to a file and view that file with a
+file browser or editor:
+
+  fst check c: >report
+  tedit report
+
+
+The `info' action
+=================
+
+The `info' action comes in three variants.  The first variant shows
+general information about the file system:
+
+- BIOS parameter block as reported by the disk device driver
+
+- Fields of the boot sector
+
+- Fields of the Super block
+
+- Fields of the Spare block
+
+- Sector numbers of Spare DIRBLKs
+
+- Sector numbers of hotfix sectors
+
+- Sector numbers of DIRBLK band
+
+- Sector numbers of band bitmaps
+
+- Number of unallocated sectors
+
+- Code pages
+
+The second variant shows information about a specific file or
+directory.  It lists the sector numbers of all sectors used by the
+file or directory.
+
+The third variant examines the complete filesystem structure to find
+out all the uses of a given sector.  If multiple files reference the
+same sectors, the names of all those files will be listed.
+
+
+Syntax
+------
+
+fst [<fst_options>] info [-f] [-u] <source>                     (1)
+fst [<fst_options>] info [-e]      <source> <path>              (2)
+fst [<fst_options>] info [-c]      <source> <number>            (3)
+
+
+<action_options>
+----------------
+
+-c      <number> is a cluster number.  By default, <number> is a
+        sector number.  If the -c switch is given, <number> is a
+        cluster number.  The -c switch can be used only for FAT
+        drives.  For variant (3) only.
+
+-e      Show extended attributes (without values).  For variant (2)
+        only.
+
+-f      Additionally summarize fragmentation of free space.  For
+        variant (1) only.
+
+-u      Additionally show sector numbers of all unallocated sectors.
+        For variant (1) only.
+
+
+<arguments>
+-----------
+
+<source>        Source disk.  This may be a drive name or the name of
+                a snapshot file.
+
+<path>          Full path name of a file or directory (without drive
+                name).  For variant (2) only.
+
+<number>        The sector number of the sector to be searched for.
+                If the -c switch is given, <number> is the cluster
+                number of the cluster to search for.  For variant (3)
+                only.
+
+
+Examples
+--------
+
+Show information about drive C:, reading one page at a time:
+
+  fst info c: | more
+
+Show information about a snapshot file, including fragmentation of
+free space, showing sector numbers in hexadecimal:
+
+  fst -x info -f c951204a.ss
+
+Show information about file or directory `c:\os2\dll\helpmgr.dll',
+including the names of its extended attributes:
+
+  fst info -e c: \os2\dll\helpmgr.dll
+
+Note the space between the drive name and the path name!
+
+Get all information about sector 36458 of drive D:
+
+  fst info d: 36458
+
+Get all information about cluster 17 of drive C:
+
+  fst info -c c: 17
+
+Note that searching a snapshot file is much faster than searching a
+disk as the sectors are in the correct sequence for searching.  If you
+want to apply multiple commands (such as `check' and `info') to a
+disk, first generate a snapshot file with the `save' action.
+
+
+The `check' action
+==================
+
+This is the most important feature of fst.  The `check' action checks
+the structure of a filesystem, like CHKDSK.
+
+Syntax
+------
+
+fst [<fst_options>] check [-f] [-m] [-p] [-s] [-u] [-v] <source>
+
+
+<action_options>
+----------------
+
+-f      Show fragmentation.  With the -f switch, fst will display a
+        table summarizing fragmentation of files and extended
+        attributes.
+
+-m      Use more memory.  By default, fst does not remember for each
+        sector of an HPFS to which file or direcory it belongs.  If it
+        finds a sector which belongs to more than one file, fst can
+        show the name of the second file only (like CHKDSK).  To find
+        the names of all affected file, you have to run fst again,
+        with the `info' action applied to the sector numbers of all
+        the offending sectors.  With the -m switch, however, fst does
+        remember the file names and will display the names of the
+        first file referencing such a sector and of the other
+        (currently processed) file also referencing that sector.
+        Unfortunately, -m requires too much memory for small machines
+        with big disks.  Without -m, fst requires about 2.125 bytes
+        per sector, that is, about 4.25 KByte of memory per Megabyte
+        of disk space.  With -m, fst requires about 6.125 bytes per
+        sector, that is, about 12.25 KByte of memory per Megabyte of
+        disk space, plus memory for all file names, plus about 8 bytes
+        per file name.  Example: For checking a 2 Gigabyte disk with
+        40000 files (including directories) having an average file
+        name length of 10 characters, fst needs about 25 MByte of
+        memory with the -m switch or about 8.5 MByte of memory without
+        the -m switch.  The -m switch is ignored for FAT partitions.
+
+-p      Pedantic checks.  Perform additional checks identifying
+        questionable and suboptimal structures.  The additional
+        messages produced by -p don't indicate problems or errors.
+
+-s      Show summary.  Display the number of directories, files,
+        DIRBLKs, and ALSECs.
+
+-u      List sectors which are allocated but not used.  By default,
+        fst does not display `lost' sectors.  With the -u switch, fst
+        will list all sectors marked as allocated but not belonging to
+        any file or file system structure.  Note that sectors 18 and
+        19 of a HPFS disk are always of that sort.
+
+-v      Verbose -- show path names.  With the -v switch, fst will show
+        the path name of the currently processed file or directory
+        while checking the disk.
+
+
+<arguments>
+-----------
+
+<source>        Source disk.  This may be a drive name or the name of
+                a snapshot file.
+
+
+Examples
+--------
+
+Check disk C: on a machine with enough memory, redirecting output to a
+disk file:
+
+  fst check -m -v c: >c.chk
+
+Note that the path names listed due to the -v switch go to standard
+error and are therefore not redirected to the c.chk file.
+
+Check a snapshot file, showing additional information:
+
+  fst check -f -s -u c951204a.ss
+
+Note that checking a snapshot file is much faster than checking a disk
+as the sectors are in the correct sequence for checking.  If you want
+to apply multiple commands (such as `check' and `info') to a disk,
+first generate a snapshot file with the `save' action.
+
+
+The `save' action
+=================
+
+The `save' action creates a snapshot file from a disk.  The snapshot
+file contains all relevant sectors which make up the structure of the
+file system.  This includes all directories and most extended
+attributes, but not file contents.  If the disk contains a lot of
+files and directories, the snapshot file can be quite big.
+
+After creating a snapshot file, you can apply the `info', `check',
+`save', `diff', `read', `restore', `dir', and `write' commands to the
+snapshot file.  The `crc' command cannot be applied to snapshot files
+(as snapshot files don't contain all the sectors of a disk).
+
+Note that checking a snapshot file is much faster than checking a disk
+as the sectors are in the correct sequence for checking.  If you want
+to apply multiple commands (such as `check' and `info') to a disk,
+first generate a snapshot file.
+
+
+Syntax
+------
+
+fst [<fst_options>] save [-v] <source> <target>
+
+
+<action_options>
+----------------
+
+-v      Verbose -- show path names.  With the -v switch, fst will show
+        the path name of the currently processed file or directory
+        while saving the sectors.
+
+
+<arguments>
+-----------
+
+<source>        Source disk.  This may be a drive name or the name of
+                a snapshot file.  Applying `save' to a snapshot file
+                just creates a copy of the file.
+
+<target>        The name of the snapshot file to be created.  As
+                snapshot files are identified by a signature, the name
+                does not matter.  However, the file must not be on the
+                source disk.
+
+
+Example
+-------
+
+Create a snapshot file from disk C:
+
+  fst save c: c951204a.ss
+
+
+The `diff' action
+=================
+
+The `diff' action compares disks, snapshot files, and CRC files.  You
+can compare disks to disks, snapshot files, and CRC files.  You can
+compare snapshot files to disks, snapshot files, and CRC files.  You
+can compare CRC files to disks, snapshot files, and CRC files.
+
+fst will list the sector numbers of differing sectors and, when
+comparing snapshot files to snapshot files, of sectors present in only
+one of the two snapshot files.
+
+If there are no differences, fst won't print anything.
+
+
+Syntax
+------
+
+fst [<fst_options>] diff <file1> <file2>
+
+
+<action_options>
+----------------
+
+There are no switches available for the `diff' action.
+
+
+<arguments>
+-----------
+
+<file1>         Drive name, snapshot file, or CRC file (old)
+
+<file2>         Drive name, snapshot file, or CRC file (new)
+
+
+Example
+-------
+
+Compare a disk to a snapshot file:
+
+  fst diff c: c951204a.ss
+
+
+The `restore' action
+====================
+
+The `restore' action writes back all the sectors or one sector of a
+snapshot file to the disk.  This is a dangerous operation, therefore
+fst will ask for confirmation.  As file contents and certain extended
+attribute values are not restored, restoring a snapshot is a bad idea
+if files have been changed in the meantime.  Moreover, snapshots
+should restored to only that disk from which the snapshot has been
+taken.
+
+
+Syntax
+------
+
+fst [<fst_options>] restore [-s=<backup>] <target> <source> [<sector>]
+
+
+<action_options>
+----------------
+
+-s=<backup>     Save old sectors into snapshot file <backup>.  Before
+                writing any sectors, fst will save all sectors to
+                <backup> which are to be overwritten.  That is, you
+                can undo the `restore' action by another `restore'
+                action, using the snapshor file <backup>.
+
+
+<arguments>
+-----------
+
+<target>        A drive name (eg, "C:") or a snapshot file.  Yes, you
+                can restore a snapshot file to a snapshot file.  This
+                is used mostly for testing.
+
+<source>        Name of the snapshot file to be copied to disk.  The
+                file must not be on the target drive.
+
+<sector>        An optional sector number.  If no sector number is
+                given, all sectors of the snapshot file will be
+                restored.  If a sector number is given, just the
+                specified sector will be restore.
+
+
+Examples
+--------
+
+Restore all sectors of a snapshot file to disk C:
+
+  fst -w restore c: c951204a.ss
+
+Restore sector 0x12a8c (hexadecimal) to disk C:
+
+  fst -w restore c: c951204a.ss 0x12a8c
+
+
+The `dir' action
+================
+
+The `dir' action lists a directory.  If the path name refers to a
+directory, all files and directories in that directory will belisted;
+if it refers to a file, only that file will be listed.  Wildcards
+cannot be used.
+
+
+Syntax
+------
+
+fst [<fst_options>] dir <source> <path>
+
+
+<action_options>
+----------------
+
+There are no switches available for the `dir' action.
+
+
+<arguments>
+-----------
+
+<source>        Source disk.  This may be a drive name or the name of
+                a snapshot file.
+
+<path>          Full path name of a file or directory (without drive
+                name).
+
+
+Example
+-------
+
+List the contents of the directory `c:\os2':
+
+  fst dir c: \os2
+
+Note the space between the drive name and the path name!
+
+
+The `copy' action
+=================
+
+The `copy' action copies a file from a disk to a another file.  This
+works even if the HPFS partition is marked dirty.  Extended attributes
+are not yet copied.  Directories cannot be copied.
+
+
+Syntax
+------
+
+fst [<fst_options>] copy <source> <path> <target>
+
+
+<action_options>
+----------------
+
+There are no switches available for the `read' action.
+
+
+<arguments>
+-----------
+
+<source>        Source disk.  This must be a drive name.
+
+<path>          Full path name of the source file (without drive
+                name).
+
+<target>        Name of target file.  The target file must not be on
+                the source disk.
+
+
+Example
+-------
+
+Copy c:\data\important.dat to the file d:\save\importnt.dat
+
+  fst copy c: \data\important.dat d:\save\importnt.dat
+
+
+The `read' action
+=================
+
+The `read' action copies a single sector from a disk or snapshot file
+to a plain disk file of 512 bytes.
+
+
+Syntax
+------
+
+fst [<fst_options>] read <source> <target> <sector>
+
+
+<action_options>
+----------------
+
+There are no switches available for the `read' action.
+
+
+<arguments>
+-----------
+
+<source>        Source disk.  This may be a drive name or the name of
+                a snapshot file.
+
+<target>        Name of target file.  512 bytes will be written to
+                this file.
+
+<sector>        The sector number of the sector to be copied from
+                <source> to <target>.
+
+
+Example
+-------
+
+Copy the boot sector of drive C: to the file c.boo:
+
+  fst read c: c.boo 0
+
+
+The `write' action
+==================
+
+The `write' action copies a single sector from a plain disk file of
+512 bytes to disk or snapshot file.  Please be very cautious!
+
+
+Syntax
+------
+
+fst [<fst_options>] write <target> <source> <sector>
+
+
+<action_options>
+----------------
+
+There are no switches available for the `read' action.
+
+
+<arguments>
+-----------
+
+<target>        Target disk.  This may be a drive name or the name of
+                a snapshot file.
+
+<source>        Name of source file.  The file must have a size of 512
+                bytes.
+
+<sector>        The sector number of the sector to be copied from
+                <source> to <target>.
+
+
+Example
+-------
+
+Copy the boot sector from the file c.boo to drive C:
+
+  fst -w write c: c.boo 0
+
+
+The `crc' action
+================
+
+The `crc' action creates a CRC file containing a 32-bit CRC (a special
+variant of a checksum) for each sector of the source disk.  You can
+use the `diff' action to compare a CRC file to another CRC file, a
+snapshot file, or a disk.
+
+
+Syntax
+------
+
+fst [<fst_options>] crc <source> <target>
+
+
+<action_options>
+----------------
+
+There are no switches available for the `crc' action.
+
+
+<arguments>
+-----------
+
+<source>        Source disk.  This must be a drive name.
+
+<target>        Name of CRC file to be created.
+
+
+Example
+-------
+
+Create a CRC file from disk D:
+
+  fst crc d: d951203a.crc
+
+
+Using fst on a damaged HPFS partition
+=====================================
+
+If you have a damaged HPFS partition, you should proceed as follows:
+
+1.  Reboot from diskettes.  This is recommended for two reasons: First,
+    disk drives can be locked by fst as no files are open.  Second,
+    HPFS partitions won't be autochecked (note that CHKDSK may cause a
+    lot of harm).
+
+2.  Create a snapshot file from the HPFS partition in question.  As the
+    snapshot file won't fit on a diskette, you need a FAT partition
+    with enough free space:
+
+      fst save d: c:\fst\d951204a.ss
+
+    If you don't have such a FAT partition, you can use a HPFS
+    partition known to be good.  If you can't create a snapshot file,
+    you have to apply fst directly to the disk, which will take much
+    longer.
+
+3.  Apply the `check' action to the snapshot file (or to the disk, if
+    you don't have a snapshot file):
+
+      fst check -m c:\fst\d951204a.ss >c:\fst\d951204a.chk
+
+    You might have to omit the -m switch if you don't have enough
+    memory.
+
+4.  Examine the output of the `check' action:
+
+      type c:\fst\d951204a.chk
+
+5.  If there are any errors, copy the affected files to a good disk or
+    to diskette.  Note that `check' does not list all affected files
+    unless the -m switch is used.  If you can't use the -m switch, you
+    have to apply the `info' action to all sectors reported as having
+    usage conflicts:
+
+      fst info c:\fst\d951204a.ss 33648
+      fst info c:\fst\d951204a.ss 33649
+      ...
+
+    If the HPFS partition has not been shutdown properly, you cannot
+    copy files unless it is marked clean with a sector editor or the
+    /FORCE option is used for IFS=HPFS.IFS.  Alternatively, you can
+    use fst's `copy' action to copy files.
+
+    Note that copying files may fail due to corrupt file system
+    structures.
+
+    You might want to create a full backup now; of course, you should
+    not overwrite the last good backup.  Again, this may fail due to
+    corrupt file system structures.
+
+6.  *After* copying the files, let CHKDSK attempt to repair the disk.
+
+7.  Let fst check the disk again:
+
+      fst check -m d:
+
+    If fst reports errors, either CHKDSK could not repair the disk or
+    fst has a bug.
+
+8.  To see which sectors have been changed by CHKDSK, compare the
+    snapshot file to th disk:
+
+      fst diff c:\fst\d951204a.ss d:
+
+9.  If the files copied in step 5 look good and both fst and CHKDSK no
+    longer report errors, copy the files back to the disk and reboot.
+    If the disk looked reasonably good before running CHKDSK, undo
+    CHKDSK's fixes:
+
+      fst -w restore d: c:\fst\d951204a.ss
+
+    Otherwise, format the disk and restore the latest good backup.
+
+
+Known limitations
+=================
+
+- Double byte character sequences (DBCS) are not supported in file
+  names.  Variant (2) of the `info' action may not find files whose
+  name contain DBCS.  The `check' action may complain about file names
+  containing DBCS.
+
+- VFAT is not completely supported.
+
+- ACLs are not completely supported.
+
+
+Warning and error messages explained
+====================================
+
+Warning messages start with `WARNING:', error messages start with
+`ERROR:'.  Errors are more serious than warnings.  Most warning and
+error messages contain the type and logical sector number of the
+sector containing the error.  Example:
+
+  ERROR: FNODE 12345 ("\dir\file"): Error message
+
+This means that `Error message' applies to the FNODE (file node) in
+sector 1234 which belongs to the file `\dir\file'.
+
+Warning and error messages applying to a directory entry include the
+directory name, the relative number of the affected directory entry in
+the DIRBLK (directory block), and the file name:
+
+  ERROR: DIRBLK 1234 ("\dir1\dir2"): DIRENT 2 ("filename"): Error message
+
+The rest of this chapter explains some of the warning and error
+messages.  Only the last part (`Error message' above) is shown for
+brevity.
+
+
+ACE count/size mismatch (XXX/YYY)
+---------------------------------
+
+Please contact the author.
+
+
+Bad sector bit is wrong
+-----------------------
+
+If there are bad sectors on the disk, a bit in the Spare Block should
+be set.  Apparently, HPFS never sets that bit, though it should do so.
+
+
+.bAlign[XXX] is YYY
+-------------------
+
+Please contact the author.
+
+
+Bits with unknown meaning are set in bFlex (0xXX)
+-------------------------------------------------
+
+Please contact the author.
+
+
+Cannot lock drive
+-----------------
+
+The disk drive cannot be locked because it is used by another program
+or by the operating system.  You can let fst access the disk without
+locking by specifying the -n option.  However, this may result in
+false alarms (spurious errors) or missed errors.  Better boot from
+diskettes.
+
+
+Cannot lock drive -- proceeding without locking
+-----------------------------------------------
+
+You have specified the -n option and the disk drive cannot be locked
+because it is used by another program or by the operating system.
+This may result in false alarms (spurious errors) or missed errors.
+Snapshot files created without locking should never be restored to
+disk! Better boot from diskettes.
+
+
+Cannot open X: (rc=108)
+-----------------------
+
+The disk drive X: is locked by another program.  Terminate that
+program and retry.
+
+
+Case mapping changed
+--------------------
+
+The name of the file or directory referred to by this warning is
+affected by a change to a case mapping table.  To access the file or
+directory, type the name in upper case letters (as defined by the case
+mapping in effect when the partition was formatted).
+
+
+Case mapping table does not match DosMapCase
+--------------------------------------------
+
+Either a code page data sector has been corrupted or (more likely) the
+case mapping table of a code page has changed in OS/2.  For instance,
+two entries of the case mapping table for code page 850 have been
+changed between OS/2 Warp 3.0 and the OS/2 Merlin beta.  In
+consequence, HPFS partitions formatted with OS/2 Warp 3.0 while code
+page 850 was in effect will produce this warning if fst is run under
+the OS/2 Merlin beta, and vice versa.  If the -p option is not given,
+up to two different entries per code page are silently ignored; if the
+-p option is given, one or two different entries per code page will
+produce a warning, more than two different entries per code page will
+produce an error.  Use the -p option to get warnings for all affected
+files.
+
+
+COUNTRY.SYS not found -- cannot check case mapping tables
+---------------------------------------------------------
+
+If OS/2 has been booted from diskette, case mapping tables are not
+available, therefore fst cannot check certain parts of HPFS
+partitions.  This is harmless.
+
+
+Creation time is out of range (315446400)
+-----------------------------------------
+
+This problem is due to a bug in LAN Server or HPFS386.  According to
+the documentation, DosSetPathInfo and DosSetFileInfo should not modify
+the creation time stamp if both ftimeCreation and fdateCreation of the
+FILESTATUS3 structure are completely zero.  And in fact, the creation
+time stamp is not modified in this case on HPFS and locally on
+HPFS386.  However, on remote HPFS386 drives, the creation time stamp
+is set to 31-Dec-1979 00:00:00, which is encoded as 315446400 and
+which is illegal (the minimum value is 01-Jan-1980 00:00:00).
+
+
+DF_ACL should be set (ACE count: XXX)
+-------------------------------------
+
+Please contact the author.
+
+
+DF_ACL should be set (up to XXX bytes of ACEs)
+----------------------------------------------
+
+Please contact the author.
+
+
+DF_PERM bit is set -- meaning unknown
+-------------------------------------
+
+Please contact the author.
+
+
+DF_XACL is set without DF_ACL
+-----------------------------
+
+Please contact the author.
+
+
+Hotfix bit is wrong
+-------------------
+
+If hotfix sectors are in use, a bit in the Spare Block should be set.
+Apparently, HPFS never sets that bit, though it should do so.
+
+
+Incorrect checksum for Spare block
+----------------------------------
+
+This error is benign and usually occurs when the system has not been
+shutdown properly or if you are checking a disk which is in use.
+
+
+Incorrect FAT compatibility bit
+-------------------------------
+
+Each directory entry on HPFS has a bit which indicates whether the
+file name conforms to FAT naming conventions or not.  For instance,
+file names containing more than one period or being longer than 8.3
+characters are not valid FAT file names.  File names containing a `+'
+character aren't valid on FAT, either.  HPFS386 (in contrast to HPFS)
+does not set this bit for file names containing a `+' character.  In
+consequence, fst shows this error message.
+
+
+Not enough sectors allocated for EA XXX
+---------------------------------------
+
+A bug in HPFS.IFS strikes if more than 40 extents are required for an
+extended attribute.  If this happens, the system is quite likely to
+crash or behave strangely.  Do not run CHKDSK!  (A bug in CHKDSK will
+destroy the file.)  Copy the file to a less fragmented disk, then
+delete the file.
+
+
+Sector XXX usage conflict: YYY vs. ZZZ
+--------------------------------------
+
+Beware! Sector XXX is used by at least two files or other file system
+structures.  If fst does not show the names of the two affected files,
+run `fst check -m' (if you have enough memory) or `fst info YYY' and
+`fst info ZZZ' to find the affected files.  Do not run CHKDSK! Copy
+the affected files as soon as possible to another disk, then delete
+the files.  This error is caused by bugs of HPFS.IFS.  One of these
+bugs has been killed in FixPak XR_W005 for OS/2 Warp.
+
+
+Sector XXX used (YYY) but not marked as allocated
+-------------------------------------------------
+
+This frequently happens if the disk being checked is in use.  If the
+error does not disappear, boot from diskettes and check the disk
+again.
+
+Otherwise beware! Any new file or such can kill the file owning sector
+XXX!  Copy the affected files as soon as possible to another disk,
+then delete the files.  This error is caused by bugs of HPFS.IFS.  One
+of these bugs has been killed in FixPak XR_W005 for OS/2 Warp.
+
+
+Spare DIRBLK bit is wrong
+-------------------------
+
+If Spare DIRBLKs are in use, a bit in the Spare Block should be set.
+Apparently, HPFS never sets that bit, though it should do so.
+
+
+Truncated name mangled by OS/2 2.0 bug
+--------------------------------------
+
+In addition to the complete file name in the DIRENT (directory entry),
+the first 15 characters of a file name are stored in the FNODE (file
+node) to be able to recover the first 15 characters of a deleted file.
+A bug in HPFS.IFS of OS/2 2.0 caused the truncated name in the FNODE
+not to be set correctly.  This is harmless.
+
+
+Wrong file sector (XXX vs. YYY)
+-------------------------------
+
+Yet another HPFS.IFS bug.  Copying the file should fix it.  Perhaps
+harmless.
+
+
+The author of fst
+=================
+
+The author of fst is
+
+    Eberhard Mattes
+    Teckstrasse 81                                      (TeX: Teckstra\ss e)
+    D-71696 Moeglingen                                  (TeX: M\"oglingen)
+    Germany
+
+Internet: mattes@azu.informatik.uni-stuttgart.de  (subject to change)
+
+No telephone calls please!  It must be stressed that the author does
+not reply to letters if you don't include return postage
+(international postal reply coupon if you are outside Germany) and a
+self-addressed envelope.
+
+Note that the author does not have enough time to repair or help you
+repair your damanged disks.
+
+
+History
+=======
+
+0.3b
+----
+
+- The `info' action did not find certain filenames
+
+0.3c
+----
+
+- There was a bug in the handling of cross-linked clusters on FAT
+  disks
+
+0.3d
+----
+
+- For the root directory of HPFS partitions, don't attempt to check
+  the size of the extended attributes against the size given in the
+  directory entry -- there's no directory entry for the root
+  directory!
+
+0.3e
+----
+
+- fst now computes and checks the checksum of long names on VFAT
+
+0.3f
+----
+
+-  Don't complain about up to 2 differences in a case mapping table
+   unless -p is given.  The case mapping table for code page 850 of
+   the OS/2 Merlin beta has two changes with respect to OS/2 Warp
+
+------------------------------ END OF FST.DOC ------------------------------
